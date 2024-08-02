@@ -6,83 +6,19 @@ data "aws_availability_zones" "available" {
 # Get Caller Account Identity
 data "aws_caller_identity" "current" {}
 
-resource "aws_acm_certificate" "ssl_san_cert" {
-  count             = var.root_redirect ? 1:0
-  domain_name       = "*.${var.domain_name}"
-  subject_alternative_names = [var.domain_name]
-  validation_method = "DNS"
+# Create ACM certificate from local files
+resource "aws_acm_certificate" "cert" {
+  private_key       = file(var.private_key_path)
+  certificate_body  = file(var.certificate_body_path)
+  certificate_chain = file(var.certificate_chain_path)
+
+  tags = {
+    Name = "wildcard.lb.amplify.utc.edu"
+  }
 
   lifecycle {
     create_before_destroy = true
   }
-}
-
-resource "aws_acm_certificate_validation" "ssl_san_cert_validation" {
-  count             = var.root_redirect ? 1:0
-  certificate_arn         = aws_acm_certificate.ssl_san_cert[0].arn
-  validation_record_fqdns = [for record in aws_route53_record.san_cert_validation : record.fqdn]
-}
-
-locals {
-  # Create an empty map or a map of domain validation options based on the condition
-  san_cert_validation_records = var.root_redirect ? {
-    for dvo in aws_acm_certificate.ssl_san_cert[0].domain_validation_options : dvo.domain_name => {
-      name   = dvo.resource_record_name
-      type   = dvo.resource_record_type
-      record = dvo.resource_record_value
-    }
-  } : {}
-}
-
-resource "aws_route53_record" "san_cert_validation" {
-  # Use for_each to iterate over the local variable
-  for_each = local.san_cert_validation_records
-  allow_overwrite = true
-  name            = each.value.name
-  type            = each.value.type
-  zone_id         = var.app_route53_zone_id
-  records         = [each.value.record]
-  ttl             = 60
-}
-
-resource "aws_acm_certificate" "ssl_cert" {
-  count             = var.root_redirect ? 0:1
-  domain_name       = "*.${var.domain_name}"
-  subject_alternative_names = [var.domain_name]
-  validation_method = "DNS"
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-resource "aws_acm_certificate_validation" "ssl_cert_validation" {
-  count                 = var.root_redirect ? 0:1
-  certificate_arn         = aws_acm_certificate.ssl_cert[0].arn
-  validation_record_fqdns = [for record in aws_route53_record.cert_validation : record.fqdn]
-}
-
-locals {
-  # Create an empty map or a map of domain validation options based on the condition
-  cert_validation_records = !var.root_redirect ? {
-    for dvo in aws_acm_certificate.ssl_cert[0].domain_validation_options : dvo.domain_name => {
-      name   = dvo.resource_record_name
-      type   = dvo.resource_record_type
-      record = dvo.resource_record_value
-    }
-  } : {}
-}
-
-resource "aws_route53_record" "cert_validation" {
-  # Use for_each to iterate over the local variable
-  for_each = local.cert_validation_records
-
-  allow_overwrite = true
-  name            = each.value.name
-  type            = each.value.type
-  zone_id         = var.app_route53_zone_id
-  records         = [each.value.record]
-  ttl             = 60
 }
 
 # Create the VPC
@@ -121,28 +57,6 @@ resource "aws_subnet" "private" {
   }
 }
 
-resource "aws_eip" "nat" {
-  domain = "vpc"
-}
-
-resource "aws_nat_gateway" "nat_gw" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id
-
-  tags = {
-    Name = "main-nat-gw"
-  }
-
-  depends_on = [aws_internet_gateway.igw]
-}
-
-# Update the private route table to use the NAT Gateway for internet-bound traffic
-resource "aws_route" "private_nat_gw" {
-  route_table_id         = aws_route_table.private.id
-  destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = aws_nat_gateway.nat_gw.id
-}
-
 # Create an Internet Gateway
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
@@ -176,49 +90,19 @@ resource "aws_route_table" "private" {
 
 # Associate public subnets with public route table
 resource "aws_route_table_association" "public" {
-  for_each      = { for idx, subnet in aws_subnet.public : idx => subnet }
+  count          = length(aws_subnet.public)
   route_table_id = aws_route_table.public.id
-  subnet_id      = each.value.id
+  subnet_id      = aws_subnet.public[count.index].id
 }
 
-# Ensure the private route table is associated with the private subnets
+# Associate private subnets with private route table
 resource "aws_route_table_association" "private" {
-  for_each      = { for idx, subnet in aws_subnet.private : idx => subnet }
+  count          = length(aws_subnet.private)
   route_table_id = aws_route_table.private.id
-  subnet_id      = each.value.id
+  subnet_id      = aws_subnet.private[count.index].id
 }
 
-# Create an S3 gateway endpoint
-resource "aws_vpc_endpoint" "s3" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.${var.region}.s3"
-  vpc_endpoint_type = "Gateway"
-
-  route_table_ids = [
-    aws_route_table.public.id,
-    aws_route_table.private.id
-  ]
-
-  policy = <<POLICY
-  {
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Effect": "Allow",
-        "Principal": "*",
-        "Action": ["s3:*"],
-        "Resource": ["arn:aws:s3:::*/*"],
-        "Condition": {
-          "StringEquals": {
-            "aws:sourceVpc": "${aws_vpc.main.id}"
-          }
-        }
-      }
-    ]
-  }
-  POLICY
-}
-
+# Create security group for ALB
 resource "aws_security_group" "alb_sg" {
   name        = var.alb_security_group_name
   description = "Security group for ALB"
@@ -249,41 +133,7 @@ resource "aws_security_group" "alb_sg" {
   }
 }
 
-# Generate a random id
-resource "random_id" "random" {
-  byte_length = 8
-}
-
-# S3 Bucket for storing ALB access logs
-resource "aws_s3_bucket" "alb_access_logs" {
-  bucket = "${var.alb_logging_bucket_name}-${random_id.random.hex}"
-  force_destroy = true
-
-  tags = {
-    Name = "alb-access-logs"
-  }
-}
-
-resource "aws_s3_bucket_policy" "alb_access_logs_policy" {
-  bucket = aws_s3_bucket.alb_access_logs.id
-  depends_on = [aws_s3_bucket.alb_access_logs]
-
-  policy = jsonencode({
-    Version = "2012-10-17",
-    Statement =  [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": "arn:aws:iam::127311923021:root"
-      },
-      "Action": "s3:PutObject",
-      "Resource": "${aws_s3_bucket.alb_access_logs.arn}/AWSLogs/*"
-      
-    }
-  ]
-  })
-}
-
+# Create ALB
 resource "aws_lb" "alb" {
   name               = var.alb_name
   internal           = false
@@ -291,52 +141,52 @@ resource "aws_lb" "alb" {
   security_groups    = [aws_security_group.alb_sg.id]
   subnets            = aws_subnet.public[*].id
 
-  enable_deletion_protection = false   
-  access_logs {
-    bucket  = aws_s3_bucket.alb_access_logs.bucket
-    enabled = true
-  }
+  enable_deletion_protection = false
 
-  depends_on = [aws_acm_certificate_validation.ssl_cert_validation, aws_s3_bucket.alb_access_logs]
-}
-
-#Create 2 Route53 records if root_redirect is false  CNAME for e.g. alpha.vanderbilt.ai or dev.vanderbilt.ai - Adjusted to Alias because subdomain is delegated. 
-resource "aws_route53_record" "root_cname" {
-  count = var.root_redirect ? 0:1
-  zone_id = var.app_route53_zone_id
-  name    = var.domain_name
-  type    = "A" 
-    
-  alias {
-    name                   = aws_lb.alb.dns_name
-    zone_id                = aws_lb.alb.zone_id
-    evaluate_target_health = true # Set to false if you do not want to evaluate the health of the target
+  tags = {
+    Name = var.alb_name
   }
 }
 
-#Create 2 Route53 records if root_redirect is true Alias record for root domain and CNAME for www
-resource "aws_route53_record" "root_alias" {
-  count   = var.root_redirect ? 1 : 0
-  zone_id = var.app_route53_zone_id
-  name    = var.domain_name
-  type    = "A" # Alias records for root domain should be type "A" or "AAAA" (for IPv6)
+# Create target group
+resource "aws_lb_target_group" "tg" {
+  name        = var.target_group_name
+  port        = var.target_group_port
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.main.id
+  target_type = "ip"
 
-  alias {
-    name                   = aws_lb.alb.dns_name
-    zone_id                = aws_lb.alb.zone_id
-    evaluate_target_health = true # Set to false if you do not want to evaluate the health of the target
+  health_check {
+    enabled             = true
+    interval            = 30
+    path                = "/"
+    port                = var.target_group_port
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    timeout             = 5
+    matcher             = "200,301"
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
-resource "aws_route53_record" "www_cname" {
-  count = var.root_redirect ? 1:0
-  zone_id = var.app_route53_zone_id
-  name    = "www.${var.domain_name}"
-  type    = "CNAME"
-  ttl     = "300"
-  records = [aws_lb.alb.dns_name]
+# Create HTTPS listener
+resource "aws_lb_listener" "https" {
+  load_balancer_arn = aws_lb.alb.arn
+  port              = "443"
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-Ext-2018-06"
+  certificate_arn   = aws_acm_certificate.cert.arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.tg.arn
+  }
 }
 
+# Create HTTP listener that redirects to HTTPS
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.alb.arn
   port              = "80"
@@ -353,112 +203,14 @@ resource "aws_lb_listener" "http" {
   }
 }
 
-resource "aws_lb_listener" "https" {
-  count             = var.root_redirect ? 0:1
-  load_balancer_arn = aws_lb.alb.arn
-  port              = "443"
-  protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-Ext-2018-06"
-  certificate_arn   = aws_acm_certificate.ssl_cert[0].arn
-  default_action {
-    type = "fixed-response"
-
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "You've reached the end"
-      status_code  = "200"
-    }
-  }
+# Output the ALB DNS name
+output "alb_dns_name" {
+  value       = aws_lb.alb.dns_name
+  description = "The DNS name of the load balancer"
 }
 
-resource "aws_lb_listener" "https_root_redirect" {
-  count             = var.root_redirect ? 1:0
-  load_balancer_arn = aws_lb.alb.arn
-  port              = "443"
-  protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS-1-2-Ext-2018-06"
-  certificate_arn   = aws_acm_certificate.ssl_san_cert[0].arn
-  default_action {
-    type = "fixed-response"
-
-    fixed_response {
-      content_type = "text/plain"
-      message_body = "You've reached the end"
-      status_code  = "200"
-    }
-  }
-}
-
-resource "aws_lb_target_group" "tg" {
-  name     = var.target_group_name
-  port     = var.target_group_port
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.main.id
-  target_type = "ip"
-
-  health_check {
-    enabled             = true
-    interval            = 30
-    path                = "/" # Change this if your app has a different health check endpoint
-    port                = var.target_group_port
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
-    timeout             = 5
-    matcher             = "200,301" # Adjust if your app returns a different success code
-  }
-
-  lifecycle {
-    create_before_destroy = true
-  }
-}
-
-#Create LB Rule if root_redirect is false --non-prod environments e.g. alpha.vanderbilt.ai
-resource "aws_lb_listener_rule" "rule" {
-  count = var.root_redirect ? 0:1
-  listener_arn = aws_lb_listener.https[0].arn
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.tg.arn
-  }
-
-  condition {
-    host_header {
-      values = [var.domain_name]
-    }
-  }
-}
-
-#Create 2 LB Rules if root_redirect is true --prod environments e.g. vanderbilt.ai --> www.vanderbilt.ai
-resource "aws_lb_listener_rule" "redirect_rule" {
-  count = var.root_redirect ? 1:0
-  listener_arn = aws_lb_listener.https_root_redirect[0].arn
-  action {
-    type             = "redirect"
-    redirect {
-      port        = "443"
-      protocol    = "HTTPS"
-      status_code = "HTTP_301"
-      host       = "www.${var.domain_name}"
-    }
-  }
-  condition {
-    host_header {
-      values = [var.domain_name]
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "www_rule" {
-  count = var.root_redirect ? 1:0
-  listener_arn = aws_lb_listener.https_root_redirect[0].arn
-  action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.tg.arn
-  }
-
-  condition {
-    host_header {
-      values = ["www.${var.domain_name}"]
-    }
-  }
+# Output the certificate ARN
+output "certificate_arn" {
+  value       = aws_acm_certificate.cert.arn
+  description = "The ARN of the imported certificate"
 }

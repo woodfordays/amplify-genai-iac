@@ -14,9 +14,6 @@ variable "root_redirect" {
   default     = false
 }
 
-variable "app_route53_zone_id" {
-  description = "The Route53 hosted zone ID for the domain"
-}
 
 variable "target_group_name" {
   description = "The name of the target group for the production environment"
@@ -64,4 +61,19 @@ variable "vpc_name" {
   description = "The name of the VPC"
   type        = string
   default     = "main-vpc"
+}
+
+variable "private_key_path" {
+  description = "Path to the private key file for the SSL certificate"
+  type        = string
+}
+
+variable "certificate_body_path" {
+  description = "Path to the certificate body file for the SSL certificate"
+  type        = string
+}
+
+variable "certificate_chain_path" {
+  description = "Path to the certificate chain file for the SSL certificate"
+  type        = string
 }

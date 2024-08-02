@@ -35,8 +35,8 @@ resource "aws_cognito_user_pool" "main" {
   schema { 
     attribute_data_type      = "String"
     mutable                  = true
-    name                     = "saml_groups"  // can be used with preauth lambda to limit access by group
-    required                 = false  // custom attributes cannot be required
+    name                     = "saml_groups"
+    required                 = false
 
     string_attribute_constraints {
       min_length = 0
@@ -49,55 +49,33 @@ resource "aws_cognito_user_pool" "main" {
       schema
     ]
   }
-}  
+}
 
 resource "aws_acm_certificate" "cognito_ssl_cert" {
-  domain_name       = var.cognito_domain  
-  validation_method = "DNS"
+  private_key       = file(var.ssl_certificate_private_key_path)
+  certificate_body  = file(var.ssl_certificate_body_path)
+  certificate_chain = file(var.ssl_certificate_chain_path)
+
+  tags = {
+    Name = "Cognito Wildcard Certificate"
+  }
 
   lifecycle {
     create_before_destroy = true
   }
 }
 
-resource "aws_acm_certificate_validation" "cognito_ssl_cert_validation" {
-  certificate_arn         = aws_acm_certificate.cognito_ssl_cert.arn
-  validation_record_fqdns = [for record in aws_route53_record.cognito_cert_validation : record.fqdn]
-}
-
-locals {
-  cognito_cert_validation_records = {
-    for dvo in aws_acm_certificate.cognito_ssl_cert.domain_validation_options : dvo.domain_name => {
-      name   = dvo.resource_record_name
-      type   = dvo.resource_record_type
-      record = dvo.resource_record_value
-    }
-  }
-}
-
-resource "aws_route53_record" "cognito_cert_validation" {
-  for_each = local.cognito_cert_validation_records
-
-  allow_overwrite = true
-  name            = each.value.name
-  type            = each.value.type
-  zone_id         = var.cognito_route53_zone_id 
-  records         = [each.value.record]
-  ttl             = 60
-}
-
-resource "aws_cognito_user_pool_domain" "main" {
-  domain          = var.cognito_domain
-  certificate_arn = aws_acm_certificate.cognito_ssl_cert.arn  # Referencing the new certificate's ARN
-  user_pool_id    = aws_cognito_user_pool.main.id
-  depends_on      = [aws_acm_certificate_validation.cognito_ssl_cert_validation] # Ensure the certificate is validated first
-}
+#resource "aws_cognito_user_pool_domain" "main" {
+#  domain          = var.cognito_domain
+#  certificate_arn = aws_acm_certificate.cognito_ssl_cert.arn
+#  user_pool_id    = aws_cognito_user_pool.main.id
+#}
 
 resource "aws_cognito_user_pool_client" "main" {
   name = var.userpool_name
 
-  user_pool_id                  = aws_cognito_user_pool.main.id
-  generate_secret               = true
+  user_pool_id                         = aws_cognito_user_pool.main.id
+  generate_secret                      = true
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_flows                  = ["code", "implicit"]
   allowed_oauth_scopes                 = ["email", "openid"]
@@ -116,19 +94,7 @@ resource "aws_cognito_user_pool_client" "main" {
 
   prevent_user_existence_errors = "ENABLED"
   
-  // Set the supported identity providers based on whether SAML IdP is used.
   supported_identity_providers = var.use_saml_idp ? [aws_cognito_identity_provider.saml[0].provider_name] : ["COGNITO"]
-}
-
-resource "aws_route53_record" "cognito_auth_custom_domain" {
-  zone_id = var.cognito_route53_zone_id
-  name    = var.cognito_domain
-  type    = "A"
-  alias {
-    name = "${aws_cognito_user_pool_domain.main.cloudfront_distribution_arn}"
-    zone_id = "Z2FDTNDATAQYW2"
-    evaluate_target_health = false
-  }
 }
 
 resource "aws_cognito_identity_provider" "saml" {

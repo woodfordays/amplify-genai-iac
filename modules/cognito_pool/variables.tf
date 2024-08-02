@@ -28,11 +28,6 @@ variable "logout_urls" {
   type        = list(string)
 }
 
-variable "route53_zone_id" {
-  description = "Enter Route53 Zone ID"
-  type        = string
-  default = ""
-}
 
 variable "create_pre_auth_lambda" {
   description = "Whether to create the pre-auth Lambda function"
@@ -62,6 +57,17 @@ variable "disable_public_signup" {
   default     = true
 }
 
-variable "cognito_route53_zone_id" {
-  description = "The Route53 hosted zone ID for the domain"
+variable "ssl_certificate_private_key_path" {
+  description = "Path to the SSL certificate's private key file"
+  type        = string
+}
+
+variable "ssl_certificate_body_path" {
+  description = "Path to the SSL certificate's body file"
+  type        = string
+}
+
+variable "ssl_certificate_chain_path" {
+  description = "Path to the SSL certificate's chain file"
+  type        = string
 }

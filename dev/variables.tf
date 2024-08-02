@@ -37,10 +37,6 @@ variable "root_redirect" {
 
 }
 
-variable "app_route53_zone_id" {
-  description = "The Route53 hosted zone ID for the domain"
-}
-
 variable "target_group_name" {
   description = "The name of the target group"
   type        = string
@@ -278,9 +274,6 @@ variable "alb_sg_id" {
   default     = [""]
 }
 
-variable "cognito_route53_zone_id" {
-  description = "The Route53 hosted zone ID for the domain"
-}
 
 variable "cognito_domain" {
   description = "Enter a string. Must be alpha numeric 3-63 in length."
@@ -379,4 +372,34 @@ variable "vpc_name" {
   description = "The name of the VPC"
   type        = string
   default     = "main-vpc"
+}
+
+variable "ssl_certificate_private_key_path" {
+  description = "Path to the SSL certificate's private key file"
+  type        = string
+}
+
+variable "ssl_certificate_body_path" {
+  description = "Path to the SSL certificate's body file"
+  type        = string
+}
+
+variable "ssl_certificate_chain_path" {
+  description = "Path to the SSL certificate's chain file"
+  type        = string
+}
+
+variable "private_key_path" {
+  description = "Path to the private key file for the SSL certificate"
+  type        = string
+}
+
+variable "certificate_body_path" {
+  description = "Path to the certificate body file for the SSL certificate"
+  type        = string
+}
+
+variable "certificate_chain_path" {
+  description = "Path to the certificate chain file for the SSL certificate"
+  type        = string
 }

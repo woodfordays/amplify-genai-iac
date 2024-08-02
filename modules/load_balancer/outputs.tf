@@ -15,9 +15,9 @@ output "alb_sg_id" {
   value       = aws_security_group.alb_sg.id
 }
 
-output "ssl_certificate_arn" {
+output "cert_arn" {
   description = "The ARN of the SSL certificate"
-  value       = aws_acm_certificate.ssl_cert[0].arn
+  value       = aws_acm_certificate.cert.arn
 }
 
 output "vpc_id" {
