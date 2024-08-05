@@ -39,3 +39,15 @@ output "private_subnet_ids" {
   description = "The IDs of the private subnets"
   value       = aws_subnet.private[*].id
 }
+
+# Output the ALB DNS name
+output "alb_dns_name" {
+  value       = aws_lb.alb.dns_name
+  description = "The DNS name of the load balancer"
+}
+
+# Output the certificate ARN
+output "certificate_arn" {
+  value       = aws_acm_certificate.cert.arn
+  description = "The ARN of the imported certificate"
+}
