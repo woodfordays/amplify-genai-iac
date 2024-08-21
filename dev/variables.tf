@@ -275,10 +275,10 @@ variable "alb_sg_id" {
 }
 
 
-variable "cognito_domain" {
-  description = "Enter a string. Must be alpha numeric 3-63 in length."
-  type        = string
-}
+#variable "cognito_domain" {
+#  description = "Enter a string. Must be alpha numeric 3-63 in length."
+#  type        = string
+#}
 
 variable "userpool_name" {
   description = "Enter name for Userpool"

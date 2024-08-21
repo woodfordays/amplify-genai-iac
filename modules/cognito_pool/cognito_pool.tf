@@ -65,11 +65,11 @@ resource "aws_acm_certificate" "cognito_ssl_cert" {
   }
 }
 
-resource "aws_cognito_user_pool_domain" "main" {
-  domain          = var.cognito_domain
-  certificate_arn = aws_acm_certificate.cognito_ssl_cert.arn
-  user_pool_id    = aws_cognito_user_pool.main.id
-}
+#resource "aws_cognito_user_pool_domain" "main" {
+#  domain          = var.cognito_domain
+#  certificate_arn = aws_acm_certificate.cognito_ssl_cert.arn
+#  user_pool_id    = aws_cognito_user_pool.main.id
+#}
 
 resource "aws_cognito_user_pool_client" "main" {
   name = var.userpool_name
