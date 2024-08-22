@@ -22,9 +22,9 @@ module "load_balancer" {
 }
 
 module "cognito_pool" {
-  source                           = "../modules/cognito_pool"
-  depends_on                       = [module.load_balancer]
-  ssl_certificate_arn              = module.load_balancer.cert_arn
+  source              = "../modules/cognito_pool"
+  depends_on          = [module.load_balancer]
+  ssl_certificate_arn = module.load_balancer.cert_arn
   #cognito_domain                   = "${local.env}-${var.cognito_domain}"
   userpool_name                    = "${local.env}-${var.userpool_name}"
   provider_name                    = "${local.env}-${var.provider_name}"

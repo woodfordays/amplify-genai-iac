@@ -403,3 +403,9 @@ variable "certificate_chain_path" {
   description = "Path to the certificate chain file for the SSL certificate"
   type        = string
 }
+
+variable "alb_internal" {
+  description = "Whether the ALB should be internal"
+  type        = bool
+  default     = true
+}

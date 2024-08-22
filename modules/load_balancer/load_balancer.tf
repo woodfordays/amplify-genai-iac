@@ -112,7 +112,7 @@ resource "aws_security_group" "alb_sg" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.vpc_cidr]
     description = "Allow HTTP traffic from anywhere"
   }
 
@@ -120,7 +120,7 @@ resource "aws_security_group" "alb_sg" {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.vpc_cidr]
     description = "Allow HTTPS traffic from anywhere"
   }
 
@@ -136,7 +136,7 @@ resource "aws_security_group" "alb_sg" {
 # Create ALB
 resource "aws_lb" "alb" {
   name               = var.alb_name
-  internal           = false
+  internal           = var.alb_internal
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb_sg.id]
   subnets            = aws_subnet.public[*].id
