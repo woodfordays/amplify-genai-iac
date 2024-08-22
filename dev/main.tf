@@ -21,6 +21,16 @@ module "load_balancer" {
   certificate_chain_path  = var.certificate_chain_path
 }
 
+module "transit_gateway_attachment" {
+  source                         = "../modules/transit_gateway_attachment"
+  depends_on                     = [module.load_balancer]
+  vpc_name                       = var.vpc_name
+  vpc_id                         = var.vpc_id
+  transit_gateway_arn            = var.transit_gateway_arn
+  transit_gateway_route_table_id = var.transit_gateway_route_table_id
+  private_subnet_ids             = load_balancer.private_subnet_ids
+}
+
 module "cognito_pool" {
   source              = "../modules/cognito_pool"
   depends_on          = [module.load_balancer]

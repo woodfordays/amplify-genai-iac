@@ -409,3 +409,13 @@ variable "alb_internal" {
   type        = bool
   default     = true
 }
+
+variable "transit_gateway_arn" {
+  description = "ARN of the Transit Gateway to attach to"
+  type        = string
+}
+
+variable "transit_gateway_route_table_id" {
+  description = "ID of the Transit Gateway route table"
+  type        = string
+}
